@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>安全生产知识竞赛</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "PingFang SC", sans-serif; background: #f0f4f8; color: #333; }
+  .container { max-width: 480px; margin: 0 auto; padding: 16px; min-height: 100vh; }
+  .header { background: linear-gradient(135deg, #1e3a8a, #2563eb); color: white; padding: 20px; border-radius: 12px; margin-bottom: 16px; text-align: center; }
+  .header h1 { font-size: 20px; }
+  .card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+  input, select { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 12px; font-size: 15px; }
+  button { width: 100%; padding: 14px; background: #2563eb; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; }
+  button:disabled { background: #94a3b8; }
+  button.danger { background: #dc2626; }
+  button.success { background: #16a34a; }
+  .question { background: #f8fafc; padding: 16px; border-radius: 8px; margin-bottom: 12px; }
+  .question-title { font-weight: 600; margin-bottom: 10px; line-height: 1.5; }
+  .option { padding: 10px 14px; margin: 6px 0; background: white; border: 2px solid #e2e8f0; border-radius: 8px; cursor: pointer; }
+  .option.selected { background: #dbeafe; border-color: #2563eb; }
+  .option.correct { background: #dcfce7; border-color: #16a34a; }
+  .option.wrong { background: #fee2e2; border-color: #dc2626; }
+  .progress { height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; margin-bottom: 16px; }
+  .progress-bar { height: 100%; background: linear-gradient(90deg, #2563eb, #16a34a); transition: width 0.3s; }
+  .result-box { text-align: center; padding: 20px; }
+  .score-big { font-size: 56px; font-weight: bold; color: #2563eb; margin: 16px 0; }
+  .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed #e2e8f0; }
+  .tag { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 12px; background: #dbeafe; color: #1e40af; margin-right: 6px; }
+  .hidden { display: none; }
+  .countdown { font-size: 18px; color: #dc2626; font-weight: 600; text-align: right; }
+  .nav-btns { display: flex; gap: 10px; }
+  .nav-btns button { flex: 1; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>🛡️ 安全生产知识竞赛</h1>
+  </div>
+
+  <!-- 登录页面 -->
+  <div id="loginPage" class="card">
+    <h2 style="margin-bottom: 16px; font-size: 18px;">考生登录</h2>
+    <input id="loginPhone" placeholder="手机号/账号" inputmode="numeric">
+    <input id="loginPassword" type="password" placeholder="密码">
+    <button onclick="doLogin()">登录</button>
+    <p style="margin-top: 12px; font-size: 13px; color: #666; text-align: center;">
+      首次参赛请联系管理员注册账号
+    </p>
+  </div>
+
+  <!-- 考试准备页面 -->
+  <div id="readyPage" class="card hidden">
+    <h2 style="margin-bottom: 12px; font-size: 18px;">欢迎您，<span id="readyName"></span>！</h2>
+    <div class="info-row"><span>所属部门：</span><span id="readyDept"></span></div>
+    <div class="info-row" style="margin-top: 12px;"><span>单选题：</span><span>20题 × 2分 = 40分</span></div>
+    <div class="info-row"><span>多选题：</span><span>20题 × 2分 = 40分</span></div>
+    <div class="info-row"><span>判断题：</span><span>10题 × 2分 = 20分</span></div>
+    <div class="info-row"><span>总分：</span><span style="color: #dc2626; font-weight: 600;">100分</span></div>
+    <div class="info-row"><span>考试时长：</span><span>30分钟</span></div>
+    <p style="margin-top: 16px; padding: 10px; background: #fef3c7; border-radius: 8px; font-size: 13px;">
+      ⚠️ 考试开始后中途不可退出，请确认网络稳定
+    </p>
+    <button onclick="startExam()" style="margin-top: 16px;" id="startBtn">开始考试</button>
+  </div>
+
+  <!-- 答题页面 -->
+  <div id="examPage" class="hidden">
+    <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <div><span class="tag" id="currentTag">单选题</span><span id="currentNum">1/50</span></div>
+        <div class="countdown" id="timer">30:00</div>
+      </div>
+      <div class="progress"><div class="progress-bar" id="progressBar" style="width: 0%"></div></div>
+      <div id="questionArea"></div>
+      <div class="nav-btns" style="margin-top: 16px;">
+        <button class="danger" onclick="prevQ()">上一题</button>
+        <button onclick="nextQ()">下一题</button>
+      </div>
+      <button class="success" onclick="confirmSubmit()" style="margin-top: 10px;">交卷</button>
+    </div>
+  </div>
+
+  <!-- 结果页面 -->
+  <div id="resultPage" class="card hidden">
+    <div class="result-box">
+      <h2>考试完成</h2>
+      <div class="score-big" id="totalScore">0</div>
+      <p style="color: #666;">总分 100 分</p>
+      <div style="margin-top: 20px; text-align: left;">
+        <div class="info-row"><span>姓名：</span><span id="resName"></span></div>
+        <div class="info-row"><span>部门：</span><span id="resDept"></span></div>
+        <div class="info-row"><span>单选题得分：</span><span id="resSingle"></span></div>
+        <div class="info-row"><span>多选题得分：</span><span id="resMulti"></span></div>
+        <div class="info-row"><span>判断题得分：</span><span id="resJudge"></span></div>
+      </div>
+      <button onclick="location.reload()" style="margin-top: 20px;">返回首页</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+// ============ 配置区域：请替换为你的 Supabase 信息 ============
+const SUPABASE_URL = 'https://wzmxowdsppctcyvlyike.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_FAqjFsu5KWeoLLBh1l-SGw_BnSwkFME';
+
+// ============ Supabase 客户端（使用 CDN） ============
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let currentUser = null;
+let questions = [];     // 随机抽到的所有题目
+let answers = {};       // 用户答案 {index: answer}
+let currentIndex = 0;
+let timerInterval = null;
+let remainSeconds = 30 * 60;
+
+// 登录
+window.doLogin = async () => {
+  const phone = document.getElementById('loginPhone').value.trim();
+  const pwd = document.getElementById('loginPassword').value;
+  if (!phone || !pwd) return alert('请输入账号密码');
+
+  // 1. 检查考试是否开放
+  const { data: settings } = await sb.from('exam_settings').select('*').limit(1).single();
+  if (!settings.exam_open) return alert('当前考试尚未开始，请联系管理员开启');
+
+  // 2. 验证账号
+  const { data: user, error } = await sb.from('users')
+    .select('*').eq('phone', phone).eq('password', pwd).single();
+  if (error || !user) return alert('账号或密码错误');
+
+  // 3. 检查状态（防重复登录）
+  if (user.status === 'submitted') {
+    return alert('您已完成本次考试，请等待管理员重置');
+  }
+  if (user.status === 'examining') {
+    return alert('您的账号已在其他设备登录，不可重复登录');
+  }
+
+  currentUser = user;
+  document.getElementById('readyName').textContent = user.name;
+  document.getElementById('readyDept').textContent = user.department;
+  document.getElementById('loginPage').classList.add('hidden');
+  document.getElementById('readyPage').classList.remove('hidden');
+};
+
+// 开始考试：标记状态 + 抽题
+window.startExam = async () => {
+  document.getElementById('startBtn').disabled = true;
+
+  // 标记为考试中
+  await sb.from('users').update({ status: 'examining' }).eq('id', currentUser.id);
+
+  // 随机抽题
+  const { data: sAll } = await sb.from('single_choice_questions').select('*');
+  const { data: mAll } = await sb.from('multiple_choice_questions').select('*');
+  const { data: jAll } = await sb.from('true_false_questions').select('*');
+
+  const sRand = shuffle(sAll).slice(0, 20).map(q => ({ ...q, type: 'single' }));
+  const mRand = shuffle(mAll).slice(0, 20).map(q => ({ ...q, type: 'multi' }));
+  const jRand = shuffle(jAll).slice(0, 10).map(q => ({ ...q, type: 'judge' }));
+  questions = [...sRand, ...mRand, ...jRand];
+
+  document.getElementById('readyPage').classList.add('hidden');
+  document.getElementById('examPage').classList.remove('hidden');
+  renderQuestion();
+  startTimer();
+};
+
+// 渲染当前题目
+function renderQuestion() {
+  const q = questions[currentIndex];
+  const typeTag = { single: '单选题', multi: '多选题', judge: '判断题' }[q.type];
+  document.getElementById('currentTag').textContent = typeTag;
+  document.getElementById('currentNum').textContent = `${currentIndex + 1}/${questions.length}`;
+  document.getElementById('progressBar').style.width = `${(currentIndex + 1) / questions.length * 100}%`;
+
+  let html = `<div class="question"><div class="question-title">${currentIndex + 1}. ${q.question}</div>`;
+
+  if (q.type === 'judge') {
+    html += `<div class="option ${answers[currentIndex] === true ? 'selected' : ''}" onclick="selectJudge(true)">✓ 正确</div>`;
+    html += `<div class="option ${answers[currentIndex] === false ? 'selected' : ''}" onclick="selectJudge(false)">✗ 错误</div>`;
+  } else {
+    const letters = ['A', 'B', 'C', 'D'];
+    letters.forEach(L => {
+      const val = q[`option_${L.toLowerCase()}`];
+      let selected = false;
+      if (q.type === 'single') selected = answers[currentIndex] === L;
+      if (q.type === 'multi') selected = (answers[currentIndex] || '').includes(L);
+      html += `<div class="option ${selected ? 'selected' : ''}" onclick="selectOption('${L}')">${L}. ${val}</div>`;
+    });
+  }
+  html += `</div>`;
+  document.getElementById('questionArea').innerHTML = html;
+}
+
+// 选项点击
+window.selectOption = (letter) => {
+  const q = questions[currentIndex];
+  if (q.type === 'single') {
+    answers[currentIndex] = letter;
+  } else if (q.type === 'multi') {
+    let cur = answers[currentIndex] || '';
+    if (cur.includes(letter)) cur = cur.replace(letter, '');
+    else cur = (cur + letter).split('').sort().join('');
+    answers[currentIndex] = cur;
+  }
+  renderQuestion();
+};
+window.selectJudge = (val) => {
+  answers[currentIndex] = val;
+  renderQuestion();
+};
+window.prevQ = () => { if (currentIndex > 0) { currentIndex--; renderQuestion(); } };
+window.nextQ = () => { if (currentIndex < questions.length - 1) { currentIndex++; renderQuestion(); } };
+
+// 计时器
+function startTimer() {
+  timerInterval = setInterval(() => {
+    remainSeconds--;
+    const m = String(Math.floor(remainSeconds / 60)).padStart(2, '0');
+    const s = String(remainSeconds % 60).padStart(2, '0');
+    document.getElementById('timer').textContent = `${m}:${s}`;
+    if (remainSeconds <= 0) { clearInterval(timerInterval); submitExam(); }
+  }, 1000);
+}
+
+// 交卷
+window.confirmSubmit = () => {
+  const unanswered = questions.length - Object.keys(answers).length;
+  if (unanswered > 0 && !confirm(`还有 ${unanswered} 题未作答，确定交卷？`)) return;
+  if (unanswered === 0 && !confirm('确定交卷吗？')) return;
+  submitExam();
+};
+
+async function submitExam() {
+  clearInterval(timerInterval);
+  let singleScore = 0, multiScore = 0, judgeScore = 0;
+
+  questions.forEach((q, i) => {
+    const userAns = answers[i];
+    let isCorrect = false;
+    if (q.type === 'single') {
+      isCorrect = userAns === q.correct_answer;
+      if (isCorrect) singleScore += 2;
+    } else if (q.type === 'multi') {
+      isCorrect = userAns === q.correct_answer;
+      if (isCorrect) multiScore += 2;
+    } else if (q.type === 'judge') {
+      isCorrect = userAns === q.correct_answer;
+      if (isCorrect) judgeScore += 2;
+    }
+  });
+
+  const total = singleScore + multiScore + judgeScore;
+
+  // 保存成绩
+  await sb.from('exam_results').insert({
+    user_id: currentUser.id,
+    user_name: currentUser.name,
+    department: currentUser.department,
+    single_score: singleScore,
+    multi_score: multiScore,
+    judge_score: judgeScore,
+    total_score: total,
+    answer_details: answers
+  });
+
+  // 更新用户状态为已交卷
+  await sb.from('users').update({ status: 'submitted' }).eq('id', currentUser.id);
+
+  // 显示结果
+  document.getElementById('totalScore').textContent = total;
+  document.getElementById('resName').textContent = currentUser.name;
+  document.getElementById('resDept').textContent = currentUser.department;
+  document.getElementById('resSingle').textContent = `${singleScore}/40`;
+  document.getElementById('resMulti').textContent = `${multiScore}/40`;
+  document.getElementById('resJudge').textContent = `${judgeScore}/20`;
+  document.getElementById('examPage').classList.add('hidden');
+  document.getElementById('resultPage').classList.remove('hidden');
+}
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+</script>
+</body>
+</html>
