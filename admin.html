@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>管理员后台 - 安全生产竞赛</title>
+<style>
+  body { font-family: "PingFang SC", sans-serif; background: #f0f4f8; padding: 16px; max-width: 800px; margin: 0 auto; }
+  h1 { color: #1e3a8a; margin-bottom: 20px; }
+  h2 { color: #1e40af; margin: 20px 0 12px; font-size: 18px; border-left: 4px solid #2563eb; padding-left: 10px; }
+  .card { background: white; padding: 16px; border-radius: 10px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+  button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; margin-right: 8px; margin-top: 4px; }
+  .btn-primary { background: #2563eb; color: white; }
+  .btn-danger { background: #dc2626; color: white; }
+  .btn-warn { background: #f59e0b; color: white; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: left; }
+  th { background: #f1f5f9; }
+  input, select { padding: 8px; border: 1px solid #ddd; border-radius: 6px; margin: 4px; }
+  .status-submitted { color: #16a34a; font-weight: 600; }
+  .status-examining { color: #f59e0b; font-weight: 600; }
+  .status-inactive { color: #94a3b8; }
+  textarea { width: 100%; min-height: 80px; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-family: monospace; font-size: 13px; }
+  .flex-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .stat-box { display: inline-block; background: #dbeafe; padding: 12px 20px; border-radius: 10px; margin: 4px; }
+  .stat-box .num { font-size: 24px; font-weight: bold; color: #1e3a8a; }
+  .stat-box .label { font-size: 12px; color: #666; }
+</style>
+</head>
+<body>
+<h1>🔧 管理员后台</h1>
+
+<div class="card">
+  <h2>1. 考试开关</h2>
+  <p>当前状态：<strong id="examStatus">加载中...</strong></p>
+  <button class="btn-primary" onclick="setExam(true)">🟢 开启考试</button>
+  <button class="btn-danger" onclick="setExam(false)">🔴 关闭考试</button>
+</div>
+
+<div class="card">
+  <h2>2. 添加考生</h2>
+  <div class="flex-row">
+    <input id="newName" placeholder="姓名">
+    <input id="newDept" placeholder="部门">
+    <input id="newPhone" placeholder="手机号">
+    <input id="newPwd" placeholder="密码">
+    <button class="btn-primary" onclick="addUser()">添加</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>3. 考生管理</h2>
+  <div class="flex-row" style="margin-bottom: 12px;">
+    <button class="btn-warn" onclick="resetAllUsers()">♻️ 重置全部考生</button>
+    <button class="btn-primary" onclick="loadUsers()">🔄 刷新</button>
+  </div>
+  <div style="overflow-x: auto;">
+    <table id="userTable">
+      <thead><tr><th>姓名</th><th>部门</th><th>手机号</th><th>状态</th><th>操作</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>4. 成绩排名</h2>
+  <button class="btn-primary" onclick="loadResults()">🔄 刷新成绩</button>
+  <div style="overflow-x: auto; margin-top: 12px;">
+    <table id="resultTable">
+      <thead><tr><th>排名</th><th>姓名</th><th>部门</th><th>单选</th><th>多选</th><th>判断</th><th>总分</th><th>交卷时间</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>5. 批量导入题目</h2>
+  <p style="font-size: 13px; color: #666; margin-bottom: 8px;">JSON 数组格式，每行一条题目。例如单选题：<br>
+  <code>[{"question":"题目","option_a":"A","option_b":"B","option_c":"C","option_d":"D","correct_answer":"A"}]</code></p>
+  <select id="qType">
+    <option value="single_choice_questions">单选题</option>
+    <option value="multiple_choice_questions">多选题</option>
+    <option value="true_false_questions">判断题</option>
+  </select>
+  <textarea id="qJson" placeholder="粘贴 JSON 数组"></textarea>
+  <button class="btn-primary" onclick="importQuestions()">导入</button>
+</div>
+
+<script type="module">
+const SUPABASE_URL = 'https://wzmxowdsppctcyvlyike.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_FAqjFsu5KWeoLLBh1l-SGw_BnSwkFME';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+async function loadStatus() {
+  const { data } = await sb.from('exam_settings').select('*').limit(1).single();
+  document.getElementById('examStatus').textContent = data.exam_open ? '🟢 已开启' : '🔴 已关闭';
+}
+window.setExam = async (v) => {
+  await sb.from('exam_settings').update({ exam_open: v, exam_start_time: v ? new Date().toISOString() : null });
+  loadStatus();
+  alert(v ? '考试已开启' : '考试已关闭');
+};
+
+window.addUser = async () => {
+  const name = document.getElementById('newName').value.trim();
+  const dept = document.getElementById('newDept').value.trim();
+  const phone = document.getElementById('newPhone').value.trim();
+  const pwd = document.getElementById('newPwd').value.trim();
+  if (!name || !dept || !phone || !pwd) return alert('请填写完整');
+  const { error } = await sb.from('users').insert({ name, department: dept, phone, password: pwd });
+  if (error) return alert('添加失败：' + error.message);
+  alert('添加成功');
+  ['newName','newDept','newPhone','newPwd'].forEach(id => document.getElementById(id).value = '');
+  loadUsers();
+};
+
+window.loadUsers = async () => {
+  const { data } = await sb.from('users').select('*').order('created_at');
+  const tbody = document.querySelector('#userTable tbody');
+  tbody.innerHTML = data.map(u => `
+    <tr>
+      <td>${u.name}</td><td>${u.department}</td><td>${u.phone}</td>
+      <td class="status-${u.status}">${statusText(u.status)}</td>
+      <td><button class="btn-warn" onclick="resetUser('${u.id}')">重置</button></td>
+    </tr>
+  `).join('');
+};
+window.resetUser = async (id) => {
+  await sb.from('users').update({ status: 'inactive' }).eq('id', id);
+  loadUsers();
+};
+window.resetAllUsers = async () => {
+  if (!confirm('确定重置所有考生状态？')) return;
+  await sb.from('users').update({ status: 'inactive' }).neq('id', '00000000-0000-0000-0000-000000000000');
+  loadUsers();
+};
+function statusText(s) {
+  return { inactive: '未参加', active: '已激活', examining: '考试中', submitted: '已交卷' }[s] || s;
+}
+
+window.loadResults = async () => {
+  const { data } = await sb.from('exam_results').select('*').order('total_score', { ascending: false });
+  const tbody = document.querySelector('#resultTable tbody');
+  tbody.innerHTML = data.map((r, i) => `
+    <tr>
+      <td>${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</td>
+      <td>${r.user_name}</td><td>${r.department}</td>
+      <td>${r.single_score}</td><td>${r.multi_score}</td><td>${r.judge_score}</td>
+      <td style="font-weight: 600; color: #1e40af;">${r.total_score}</td>
+      <td>${new Date(r.submitted_at).toLocaleString('zh-CN')}</td>
+    </tr>
+  `).join('');
+};
+
+window.importQuestions = async () => {
+  const table = document.getElementById('qType').value;
+  const json = document.getElementById('qJson').value.trim();
+  if (!json) return alert('请输入 JSON');
+  let arr;
+  try { arr = JSON.parse(json); } catch (e) { return alert('JSON 格式错误：' + e.message); }
+  const { error } = await sb.from(table).insert(arr);
+  if (error) return alert('导入失败：' + error.message);
+  alert(`成功导入 ${arr.length} 条题目`);
+  document.getElementById('qJson').value = '';
+};
+
+loadStatus(); loadUsers(); loadResults();
+</script>
+</body>
+</html>
