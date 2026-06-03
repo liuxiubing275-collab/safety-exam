@@ -52,6 +52,7 @@
   </div>
 
   <!-- 考试准备页面 -->
+  <!-- 考试准备页面 -->
   <div id="readyPage" class="card hidden">
     <h2 style="margin-bottom: 12px; font-size: 18px;">欢迎您，<span id="readyName"></span>！</h2>
     <div class="info-row"><span>所属部门：</span><span id="readyDept"></span></div>
@@ -60,10 +61,30 @@
     <div class="info-row"><span>判断题：</span><span>10题 × 2分 = 20分</span></div>
     <div class="info-row"><span>总分：</span><span style="color: #dc2626; font-weight: 600;">100分</span></div>
     <div class="info-row"><span>考试时长：</span><span>30分钟</span></div>
-    <p style="margin-top: 16px; padding: 10px; background: #fef3c7; border-radius: 8px; font-size: 13px;">
-      ⚠️ 考试开始后中途不可退出，请确认网络稳定
+    
+    <p id="examClosedTip" class="hidden" style="margin-top: 16px; padding: 10px; background: #fef3c7; border-radius: 8px; font-size: 13px; color: #92400e;">
+      ⚠️ 正式考试尚未开启，当前仅可进入练习模式熟悉题库。
     </p>
+
     <button onclick="startExam()" style="margin-top: 16px;" id="startBtn">开始考试</button>
+    <button onclick="startPractice()" style="margin-top: 10px; background: #f59e0b;" id="practiceBtn" class="hidden">📖 进入练习模式</button>
+  </div>
+
+  <!-- 练习模式页面 -->
+  <div id="practicePage" class="hidden">
+    <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <div><span class="tag" id="pracTag">单选题</span><span id="pracNum">1/50</span></div>
+        <button onclick="exitPractice()" style="width: auto; padding: 6px 12px; font-size: 12px; background: #94a3b8;">退出练习</button>
+      </div>
+      <div class="progress"><div class="progress-bar" id="pracProgressBar" style="width: 0%"></div></div>
+      <div id="pracQuestionArea"></div>
+      <div id="pracFeedback" class="hidden" style="margin-top: 12px; padding: 10px; border-radius: 8px; font-size: 14px; background: #dcfce7; color: #166534;"></div>
+      <div class="nav-btns" style="margin-top: 16px;">
+        <button class="danger" onclick="pracPrev()">上一题</button>
+        <button onclick="pracNext()" id="pracNextBtn">确认答案</button>
+      </div>
+    </div>
   </div>
 
   <!-- 答题页面 -->
@@ -123,17 +144,9 @@ window.doLogin = async () => {
   const pwd = document.getElementById('loginPassword').value;
   if (!phone || !pwd) return alert('请输入账号密码');
 
-// 1. 检查考试是否开放
-  const { data: settings, error: settingsError } = await sb.from('exam_settings').select('*').limit(1).single();
-
-  if (settingsError) {
-    console.error('读取考试设置失败:', settingsError);
-   return alert('系统错误：无法读取考试状态，请检查网络或联系管理员。\n详情: ' + settingsError.message);
-  }
-
-  if (!settings || !settings.exam_open) {
-    return alert('当前考试尚未开始，请联系管理员开启。\n(当前状态: ' + (settings ? '关闭' : '无配置') + ')');
-  }
+  // 1. 检查考试是否开放
+  const { data: settings } = await sb.from('exam_settings').select('*').limit(1).single();
+  const isExamOpen = settings && settings.exam_open;
 
   // 2. 验证账号
   const { data: user, error } = await sb.from('users')
@@ -141,18 +154,29 @@ window.doLogin = async () => {
   if (error || !user) return alert('账号或密码错误');
 
   // 3. 检查状态（防重复登录）
-  if (user.status === 'submitted') {
-    return alert('您已完成本次考试，请等待管理员重置');
-  }
-  if (user.status === 'examining') {
-    return alert('您的账号已在其他设备登录，不可重复登录');
-  }
+  if (user.status === 'submitted') return alert('您已完成本次考试，请等待管理员重置');
+  if (user.status === 'examining') return alert('您的账号已在其他设备登录，不可重复登录');
 
   currentUser = user;
   document.getElementById('readyName').textContent = user.name;
   document.getElementById('readyDept').textContent = user.department;
   document.getElementById('loginPage').classList.add('hidden');
   document.getElementById('readyPage').classList.remove('hidden');
+
+  // 根据考试状态显示不同的按钮
+  const startBtn = document.getElementById('startBtn');
+  const practiceBtn = document.getElementById('practiceBtn');
+  const examTip = document.getElementById('examClosedTip');
+
+  if (isExamOpen) {
+    startBtn.classList.remove('hidden');
+    practiceBtn.classList.add('hidden');
+    examTip.classList.add('hidden');
+  } else {
+    startBtn.classList.add('hidden');
+    practiceBtn.classList.remove('hidden');
+    examTip.classList.remove('hidden');
+  }
 };
 
 // 开始考试：标记状态 + 抽题
@@ -299,6 +323,139 @@ function shuffle(arr) {
   }
   return a;
 }
+
+// ============ 练习模式逻辑 ============
+let pracQuestions = [];
+let pracIndex = 0;
+let pracTempAns = null;   // 当前题用户的临时答案
+let pracConfirmed = false; // 当前题是否已确认答案
+
+window.startPractice = async () => {
+  // 获取所有题目并打乱顺序
+  const { data: sAll } = await sb.from('single_choice_questions').select('*');
+  const { data: mAll } = await sb.from('multiple_choice_questions').select('*');
+  const { data: jAll } = await sb.from('true_false_questions').select('*');
+
+  pracQuestions = [
+    ...shuffle(sAll).map(q => ({ ...q, type: 'single' })),
+    ...shuffle(mAll).map(q => ({ ...q, type: 'multi' })),
+    ...shuffle(jAll).map(q => ({ ...q, type: 'judge' }))
+  ];
+  
+  pracIndex = 0;
+  pracTempAns = null;
+  pracConfirmed = false;
+
+  document.getElementById('readyPage').classList.add('hidden');
+  document.getElementById('practicePage').classList.remove('hidden');
+  renderPractice();
+};
+
+function renderPractice() {
+  const q = pracQuestions[pracIndex];
+  const typeTag = { single: '单选题', multi: '多选题', judge: '判断题' }[q.type];
+  document.getElementById('pracTag').textContent = typeTag;
+  document.getElementById('pracNum').textContent = `${pracIndex + 1}/${pracQuestions.length}`;
+  document.getElementById('pracProgressBar').style.width = `${(pracIndex + 1) / pracQuestions.length * 100}%`;
+
+  let html = `<div class="question"><div class="question-title">${pracIndex + 1}. ${q.question}</div>`;
+
+  if (q.type === 'judge') {
+    const tClass = pracConfirmed ? (q.correct_answer === true ? 'correct' : (pracTempAns === true ? 'wrong' : '')) : (pracTempAns === true ? 'selected' : '');
+    const fClass = pracConfirmed ? (q.correct_answer === false ? 'correct' : (pracTempAns === false ? 'wrong' : '')) : (pracTempAns === false ? 'selected' : '');
+    html += `<div class="option ${tClass}" onclick="pracSelect(true)">✓ 正确</div>`;
+    html += `<div class="option ${fClass}" onclick="pracSelect(false)">✗ 错误</div>`;
+  } else {
+    const letters = ['A', 'B', 'C', 'D'];
+    letters.forEach(L => {
+      const val = q[`option_${L.toLowerCase()}`];
+      let cls = '';
+      if (q.type === 'single') {
+        if (pracConfirmed) {
+          if (q.correct_answer === L) cls = 'correct';
+          else if (pracTempAns === L) cls = 'wrong';
+        } else {
+          if (pracTempAns === L) cls = 'selected';
+        }
+      } else if (q.type === 'multi') {
+        const isSel = (pracTempAns || '').includes(L);
+        const isCor = q.correct_answer.includes(L);
+        if (pracConfirmed) {
+          if (isCor) cls = 'correct'; // 漏选也标绿
+          if (!isCor && isSel) cls = 'wrong'; // 错选标红
+        } else {
+          if (isSel) cls = 'selected';
+        }
+      }
+      html += `<div class="option ${cls}" onclick="pracSelect('${L}')">${L}. ${val}</div>`;
+    });
+  }
+  html += `</div>`;
+  document.getElementById('pracQuestionArea').innerHTML = html;
+
+  // 更新底部反馈和按钮状态
+  const feedbackDiv = document.getElementById('pracFeedback');
+  const nextBtn = document.getElementById('pracNextBtn');
+  
+  if (pracConfirmed) {
+    let ansText = q.type === 'judge' ? (q.correct_answer ? '正确' : '错误') : q.correct_answer;
+    feedbackDiv.innerHTML = `✅ 正确答案：<strong>${ansText}</strong>`;
+    feedbackDiv.classList.remove('hidden');
+    nextBtn.textContent = pracIndex === pracQuestions.length - 1 ? '完成练习' : '下一题';
+  } else {
+    feedbackDiv.classList.add('hidden');
+    nextBtn.textContent = '确认答案';
+    nextBtn.disabled = (pracTempAns === null || pracTempAns === '');
+  }
+}
+
+window.pracSelect = (val) => {
+  if (pracConfirmed) return; // 已确认不可修改
+  const q = pracQuestions[pracIndex];
+  if (q.type === 'single' || q.type === 'judge') {
+    pracTempAns = val;
+  } else if (q.type === 'multi') {
+    let cur = pracTempAns || '';
+    if (cur.includes(val)) cur = cur.replace(val, '');
+    else cur = (cur + val).split('').sort().join('');
+    pracTempAns = cur;
+  }
+  renderPractice();
+};
+
+window.pracNext = () => {
+  if (!pracConfirmed) {
+    // 第一次点击：确认答案
+    if (pracTempAns === null || pracTempAns === '') return;
+    pracConfirmed = true;
+    renderPractice();
+  } else {
+    // 第二次点击：下一题
+    if (pracIndex === pracQuestions.length - 1) {
+      exitPractice();
+    } else {
+      pracIndex++;
+      pracTempAns = null;
+      pracConfirmed = false;
+      renderPractice();
+    }
+  }
+};
+
+window.pracPrev = () => {
+  if (pracIndex > 0) {
+    pracIndex--;
+    pracTempAns = null; // 返回上一题重新作答
+    pracConfirmed = false;
+    renderPractice();
+  }
+};
+
+window.exitPractice = () => {
+  document.getElementById('practicePage').classList.add('hidden');
+  document.getElementById('readyPage').classList.remove('hidden');
+};
+
 </script>
 </body>
 </html>

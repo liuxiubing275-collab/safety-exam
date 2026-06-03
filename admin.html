@@ -65,6 +65,7 @@
 <div class="card">
   <h2>4. 成绩排名</h2>
   <button class="btn-primary" onclick="loadResults()">🔄 刷新成绩</button>
+  <button class="btn-danger" onclick="clearResults()">🗑️ 清空成绩</button>
   <div style="overflow-x: auto; margin-top: 12px;">
     <table id="resultTable">
       <thead><tr><th>排名</th><th>姓名</th><th>部门</th><th>单选</th><th>多选</th><th>判断</th><th>总分</th><th>交卷时间</th></tr></thead>
@@ -186,6 +187,29 @@ window.loadResults = async () => {
       <td>${new Date(r.submitted_at).toLocaleString('zh-CN')}</td>
     </tr>
   `).join('');
+};
+
+window.clearResults = async () => {
+  if (!confirm('⚠️ 确定要清空所有成绩记录吗？此操作不可恢复！\n（同时会重置所有考生的考试状态，允许他们重考）')) return;
+  
+  // 1. 清空成绩表 (必须带过滤条件绕过 Supabase 安全限制)
+  const { error: resError } = await sb.from('exam_results')
+    .delete()
+    .neq('id', '00000000-0000-0000-0000-000000000000');
+    
+  // 2. 重置所有考生的状态为未参加
+  const { error: userError } = await sb.from('users')
+    .update({ status: 'inactive' })
+    .neq('id', '00000000-0000-0000-0000-000000000000');
+    
+  if (resError || userError) {
+    alert('❌ 清空失败: ' + (resError?.message || userError?.message));
+    return;
+  }
+  
+  alert('✅ 成绩已清空，考生状态已重置！');
+  loadResults();
+  loadUsers();
 };
 
 window.importQuestions = async () => {
