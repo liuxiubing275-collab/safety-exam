@@ -97,25 +97,45 @@ async function loadStatus() {
   document.getElementById('examStatus').textContent = data.exam_open ? '🟢 已开启' : '🔴 已关闭';
 }
 window.setExam = async (v) => {
-  const btnText = v ? '开启' : '关闭';
+  // 1. 先查出当前设置的 ID (因为 update 必须指定 ID)
+  const { data: settings, error: fetchError } = await sb.from('exam_settings').select('id').limit(1).single();
   
-  // 执行更新，并捕获可能的错误
-  const { data, error } = await sb.from('exam_settings')
+  if (fetchError || !settings) {
+    // 如果表里没数据，先插入一条默认数据
+    const { data: newSettings, error: insertError } = await sb.from('exam_settings')
+      .insert({ exam_open: false })
+      .select('id')
+      .single();
+      
+    if (insertError || !newSettings) {
+      return alert('❌ 数据库配置异常，请检查 exam_settings 表');
+    }
+    // 使用新插入的 ID 继续执行
+    return updateSettings(newSettings.id, v);
+  }
+  
+  // 2. 使用查到的 ID 进行更新
+  await updateSettings(settings.id, v);
+};
+
+// 提取出来的实际更新函数
+async function updateSettings(id, v) {
+  const { error } = await sb.from('exam_settings')
     .update({ 
       exam_open: v, 
       exam_start_time: v ? new Date().toISOString() : null 
-    });
+    })
+    .eq('id', id); // ⭐️ 关键：必须加上 .eq('id', id) 作为过滤条件
   
   if (error) {
-    console.error('更新考试状态失败:', error);
-    alert(`❌ ${btnText}失败！\n原因: ${error.message}\n\n请检查是否已执行第一步的 RLS 权限 SQL。`);
+    console.error('更新失败:', error);
+    alert(`❌ 更新失败！\n原因: ${error.message}`);
     return;
   }
 
-  // 刷新状态显示
   await loadStatus();
-  alert(`✅ 考试已成功${btnText}！`);
-};
+  alert(`✅ 考试已成功${v ? '开启' : '关闭'}！`);
+}
 
 window.addUser = async () => {
   const name = document.getElementById('newName').value.trim();
