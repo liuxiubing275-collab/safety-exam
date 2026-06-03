@@ -123,9 +123,17 @@ window.doLogin = async () => {
   const pwd = document.getElementById('loginPassword').value;
   if (!phone || !pwd) return alert('请输入账号密码');
 
-  // 1. 检查考试是否开放
-  const { data: settings } = await sb.from('exam_settings').select('*').limit(1).single();
-  if (!settings.exam_open) return alert('当前考试尚未开始，请联系管理员开启');
+// 1. 检查考试是否开放
+  const { data: settings, error: settingsError } = await sb.from('exam_settings').select('*').limit(1).single();
+
+  if (settingsError) {
+    console.error('读取考试设置失败:', settingsError);
+   return alert('系统错误：无法读取考试状态，请检查网络或联系管理员。\n详情: ' + settingsError.message);
+  }
+
+  if (!settings || !settings.exam_open) {
+    return alert('当前考试尚未开始，请联系管理员开启。\n(当前状态: ' + (settings ? '关闭' : '无配置') + ')');
+  }
 
   // 2. 验证账号
   const { data: user, error } = await sb.from('users')

@@ -97,9 +97,24 @@ async function loadStatus() {
   document.getElementById('examStatus').textContent = data.exam_open ? '🟢 已开启' : '🔴 已关闭';
 }
 window.setExam = async (v) => {
-  await sb.from('exam_settings').update({ exam_open: v, exam_start_time: v ? new Date().toISOString() : null });
-  loadStatus();
-  alert(v ? '考试已开启' : '考试已关闭');
+  const btnText = v ? '开启' : '关闭';
+  
+  // 执行更新，并捕获可能的错误
+  const { data, error } = await sb.from('exam_settings')
+    .update({ 
+      exam_open: v, 
+      exam_start_time: v ? new Date().toISOString() : null 
+    });
+  
+  if (error) {
+    console.error('更新考试状态失败:', error);
+    alert(`❌ ${btnText}失败！\n原因: ${error.message}\n\n请检查是否已执行第一步的 RLS 权限 SQL。`);
+    return;
+  }
+
+  // 刷新状态显示
+  await loadStatus();
+  alert(`✅ 考试已成功${btnText}！`);
 };
 
 window.addUser = async () => {
